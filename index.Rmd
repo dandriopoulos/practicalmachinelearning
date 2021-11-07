@@ -1,0 +1,136 @@
+---
+output:
+  html_document:
+    df_print: paged
+    fig_caption: true
+    
+always_allow_html: yes
+title: "Activity data analytics - Practical Machine Learning Final Project" 
+author: "Dimitrios Andriopoulos"
+date: "November 2021"
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, comment = NA)
+```
+
+## 1. Synopsis
+This project explores the quality of activities performed by 6 participants. The data is used from accelerometers on th belt, forearm, arm, and dumbell. As can be seen, the most accurate prediction model is random forests. 
+
+
+## 2. Data processing
+The Weight Lifting Exercise Dataset contains ther relevant datasets on the website http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har
+
+### 2.1 Reading in the Personal activity data
+
+```{r library, warning = FALSE, echo =  FALSE, message= FALSE}
+library(rmarkdown)
+library(knitr)
+library(dplyr)
+library(DT)
+library(forecast)
+library(caret)
+library(ggplot2)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+```
+
+```{r data_load, warning =FALSE, cache=TRUE}
+url.train<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url.test<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+destfile.train<-"/Users/dimitriosandriopoulos/Practical_machine_learning_final_submission/gitrepos/practicalmachinelearning/train.csv"
+destfile.test<-"/Users/dimitriosandriopoulos/Practical_machine_learning_final_submission/gitrepos/practicalmachinelearning/test.csv"
+download.file(url.train,destfile.train)
+download.file(url.test,destfile.test)
+
+train <- read.csv("train.csv", na.strings = c("NA","#DIV/0!",""))
+test <- read.csv("test.csv", na.strings = c("NA","#DIV/0!",""))
+
+```
+
+### 2.2 Cleaning the input data & exploratory data analysis & data preparation
+
+```{r data_preparation, warning =FALSE, cache=TRUE}
+
+#Perform exploratory data analysis
+#summary(test); summary(train); str(train); str(test)
+
+#Data cleaning
+#delete columns with all NA's
+train<-train[,colSums(is.na(train)) == 0]
+test <-test[,colSums(is.na(test)) == 0]
+
+#remove irrelevant variables 
+train<-train[-c(1:7)]
+test<-test[-c(1:7)]
+
+train$classe<-as.factor(train$classe) #convert the outcome to factor with levels A through E
+
+#Partition the train data into a testing/validation set and a training set
+set.seed(123)
+inTrain<-createDataPartition(y=train$classe, p=0.75, list=F)
+
+training<-train[inTrain,]
+testing<-train[-inTrain,]
+```
+
+The table below, shows that each classe has similar frequencies, A being an exception.
+```{r table1, warning = FALSE, layout="l-body-outset"}
+
+table(training$classe); table(testing$classe)
+
+```
+
+## 3. Model selection and training
+
+### 3.1 Simple prediction trees
+As our outcome variable is composed of 5 classes (A) through (E), I will apply prediction models with Trees. Specifically, I will use the standard "rpart" tree and then random forests. I will compare the two. 
+
+```{r model_selection, warning =FALSE, cache=TRUE}
+library(caret)
+modFit1<-rpart(classe ~., data = training, method = "class") # training the model using all predictors and method rpart
+pred1<-predict(modFit1, testing, type = "class")
+cm1<-confusionMatrix(pred1,as.factor(testing$classe))
+cm1
+#Accuracy of prediction trees
+accu1<-cm1$overall
+```
+
+Below, follows an rpart.plot of the prediction tree I built above:
+```{r rpart_plot, dev='png'}
+
+library(rattle)
+rpart.plot(modFit1, main="Prediction Tree", type = 1, extra=102 ,under=TRUE, faclen=0, box.palette="GnBu", shadow.col="gray")
+```
+
+As, can be seen in simple prediction tree above, the accuracy achieved was 73% overall. The confusion matrix illustrates the cases where the algorithm misclassified.
+
+### 3.2 Random forests
+Next, as random forests are one of the top prediction algorithms, I will check their efficacy in this situatuion. 
+```{r model_selection2, warning =FALSE, cache=TRUE}
+
+#After attempting to run random forests using the caret package, I switched to the randomForest function from the randomForest package directly; the train function from caret was taking too long.
+library(randomForest)
+
+rf<-randomForest(classe ~., data = training, method = "class") # training the model using all predictors and method random forests
+
+pred2<-predict(rf, testing, type = "class")
+cm2<-confusionMatrix(pred2,as.factor(testing$classe))
+cm2
+
+```
+
+
+## Results & Prediction
+
+The classification tree using rpart gave an accuracy of *0.738* with a 95% confidence interval of (0.725, 0.7498). On the other hand, the random forests model gave an overall accuracy of *0.997* with a 95% CI of (0.9947, 0.9981). This implies, the training model selected will be the random forests. Random forests will have an expected *out-of-sample error rate of 0.05*, which can be seen in the plot below.
+When we use the test set downloaded from the website, the random forest performed as follows:
+
+```{r prediction, warning =FALSE, cache=TRUE}
+rf.predict<-predict(rf,test,type = "class")
+rf.predict
+plot(rf$err.rate[,1], type = "l")
+abline(h=0.05, col="blue")
+
+```
